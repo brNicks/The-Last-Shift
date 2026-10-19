@@ -195,9 +195,9 @@ class Game:
         self.a_documents = [self.doc1, self.doc2, self.doc3]
         self.b_doc1 = Item(260, 300, "Documento B1")
         self.b_doc2 = Item(580, 280, "Documento B2")
-        self.b_doc3 = Item(900, 500, "Documento B3")
+        self.b_doc3 = Item(1110, 500, "Documento B3")
         self.b_documents = [self.b_doc1, self.b_doc2, self.b_doc3]
-        self.b_math_station = pygame.Rect(570, 520, 140, 80)
+        self.b_math_station = pygame.Rect(900, 245, 140, 80)
         self.office_a_exit = pygame.Rect(1080, 560, 120, 80)
         self.office_b_exit = pygame.Rect(1080, 560, 120, 80)
         self.current_office = "A"
@@ -1821,7 +1821,7 @@ class Game:
         pygame.draw.line(self.screen, (70, 66, 59), clock_rect.center, (clock_rect.centerx, clock_rect.y + 8), 1)
         pygame.draw.line(self.screen, (70, 66, 59), clock_rect.center, (clock_rect.right - 8, clock_rect.centery), 1)
 
-        trash_x = 1040 if self.current_office == "B" else 940
+        trash_x = 990 if self.current_office == "B" else 940
         pygame.draw.rect(self.screen, (50, 44, 37), (trash_x, 500, 28, 34))
         pygame.draw.rect(self.screen, (30, 27, 23), (trash_x - 2, 496, 32, 6))
 
