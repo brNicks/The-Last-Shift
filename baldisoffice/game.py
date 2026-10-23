@@ -1,3 +1,4 @@
+# THE LAST SHIFT — V56: polimento narrativo dos documentos da Fase 1
 import pygame
 import random
 import math
@@ -794,11 +795,27 @@ class Game:
                             }
                             self.dialogue.show(clue_messages.get(doc.name, f"{doc.name} coletado!"))
                         else:
-                            self.dialogue.show(f"{doc.name} coletado!")
+                            # Polimento narrativo da Fase 1: os documentos do
+                            # Escritório A parecem profissionais, mas deixam
+                            # pequenas dúvidas sem antecipar o terror do B.
+                            a_clue_messages = {
+                                "Documento 1": "Documento 1 coletado. Relatorio de rotina: tudo parece em ordem.",
+                                "Documento 2": "Documento 2 coletado. Ha um horario anotado que nao combina com o expediente.",
+                                "Documento 3": "Documento 3 coletado. O campo de assinatura esta preenchido, mas voce nao reconhece o nome.",
+                            }
+                            self.dialogue.show(
+                                a_clue_messages.get(doc.name, f"{doc.name} coletado!")
+                            )
 
                         if self.documents_collected==3:
                             self.objective="Ir ate a estacao de avaliacao"
                             self.mission_ui.show("DOCUMENTOS","Va ate a estacao de avaliacao")
+                            # V57: pequena conclusao narrativa da busca no Escritorio A.
+                            if self.current_office == "A":
+                                self.dialogue.show(
+                                    "Os tres documentos estao reunidos. "
+                                    "A assinatura desconhecida continua na sua cabeca."
+                                )
                         return
             if (self.documents_collected==3 and not self.evaluation_started and not self.evaluation_finished and
                 self.player.rect.colliderect(station.inflate(50,50))):
@@ -2160,6 +2177,17 @@ class Game:
             (station.x + 34, station.y + 15, 72, 23),
             border_radius=2
         )
+
+        # V57: a tela sinaliza quando a estacao esta pronta para a avaliacao.
+        if self.current_room == "office_a":
+            station_label = (
+                "PRONTA"
+                if self.documents_collected >= 3 and not self.evaluation_finished
+                else "AGUARDE"
+            )
+            label_font = pygame.font.SysFont("arial", 10, bold=True)
+            label_surface = label_font.render(station_label, True, (175, 185, 165))
+            self.screen.blit(label_surface, (station.x + 43, station.y + 21))
         pygame.draw.rect(
             self.screen,
             (55, 55, 55),
