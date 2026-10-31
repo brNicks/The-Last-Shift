@@ -1,4 +1,3 @@
-# THE LAST SHIFT — V56: polimento narrativo dos documentos da Fase 1
 import pygame
 import random
 import math
@@ -1153,6 +1152,13 @@ class Game:
             self.evaluation_finished = True
             self.objective = "Ir ate a saida do escritorio"
             self.mission_ui.show("AVALIACAO CONCLUIDA", "Va ate a saida do escritorio")
+
+            # V58: pequeno sinal de suspense depois da avaliacao do Escritorio A.
+            # A mensagem e apenas narrativa: nao altera objetivos nem mecanicas.
+            if self.current_office == "A" and not self.recovery_mode:
+                self.dialogue.show(
+                    "A avaliacao foi registrada. Por um instante, a tela mostra uma linha estranha... e ela desaparece."
+                )
 
     # =====================================================
     # UPDATE
