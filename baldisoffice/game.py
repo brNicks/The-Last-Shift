@@ -1,3 +1,4 @@
+# THE LAST SHIFT — V56: polimento narrativo dos documentos da Fase 1
 import pygame
 import random
 import math
@@ -2184,16 +2185,22 @@ class Game:
             border_radius=2
         )
 
-        # V57: a tela sinaliza quando a estacao esta pronta para a avaliacao.
+        # V59: a tela acompanha o estado completo da estacao no Escritorio A.
+        # AGUARDE = faltam documentos; PRONTA = pode iniciar; REGISTRADO = avaliacao concluida.
         if self.current_room == "office_a":
-            station_label = (
-                "PRONTA"
-                if self.documents_collected >= 3 and not self.evaluation_finished
-                else "AGUARDE"
-            )
+            if self.evaluation_finished:
+                station_label = "REGISTRADO"
+                station_color = (190, 185, 150)
+            elif self.documents_collected >= 3:
+                station_label = "PRONTA"
+                station_color = (175, 195, 165)
+            else:
+                station_label = "AGUARDE"
+                station_color = (145, 150, 145)
+
             label_font = pygame.font.SysFont("arial", 10, bold=True)
-            label_surface = label_font.render(station_label, True, (175, 185, 165))
-            self.screen.blit(label_surface, (station.x + 43, station.y + 21))
+            label_surface = label_font.render(station_label, True, station_color)
+            self.screen.blit(label_surface, (station.x + 39, station.y + 21))
         pygame.draw.rect(
             self.screen,
             (55, 55, 55),
