@@ -2185,22 +2185,77 @@ class Game:
             border_radius=2
         )
 
-        # V59: a tela acompanha o estado completo da estacao no Escritorio A.
-        # AGUARDE = faltam documentos; PRONTA = pode iniciar; REGISTRADO = avaliacao concluida.
+        # V61: o monitor do Escritorio A mantem os estados da V60.
+        # No Escritorio B, a tela acompanha a avaliacao e o aumento da tensao.
+        # Essas informacoes sao apenas visuais e nao alteram a jogabilidade.
         if self.current_room == "office_a":
             if self.evaluation_finished:
                 station_label = "REGISTRADO"
                 station_color = (190, 185, 150)
+                station_hint = "DADOS SALVOS"
             elif self.documents_collected >= 3:
                 station_label = "PRONTA"
                 station_color = (175, 195, 165)
+                station_hint = "INICIAR TESTE"
             else:
                 station_label = "AGUARDE"
                 station_color = (145, 150, 145)
+                station_hint = f"ARQUIVOS {self.documents_collected}/3"
 
             label_font = pygame.font.SysFont("arial", 10, bold=True)
+            hint_font = pygame.font.SysFont("arial", 7)
+
+        elif self.current_room == "office_b":
+            answered = self.math.correct_answers + self.math.wrong_answers
+            tension_percent = int(min(100, self.b_tension))
+
+            if self.b_insane_active:
+                station_label = "FALHA CRITICA"
+                station_color = (205, 105, 95)
+                station_hint = "SISTEMA INSTAVEL"
+            elif self.b_boss_reveal_pending:
+                station_label = "SINAL PERDIDO"
+                station_color = (205, 155, 105)
+                station_hint = "AGUARDE..."
+            elif self.evaluation_started:
+                station_label = "EM ANDAMENTO"
+                if tension_percent >= 70:
+                    station_color = (205, 115, 100)
+                elif tension_percent >= 35:
+                    station_color = (195, 165, 105)
+                else:
+                    station_color = (155, 175, 155)
+                station_hint = f"Q {answered}/10  T {tension_percent}%"
+            elif self.evaluation_finished:
+                station_label = "CONCLUIDO"
+                station_color = (185, 175, 135)
+                station_hint = "SAIDA DISPONIVEL"
+            elif self.documents_collected >= 3:
+                station_label = "SISTEMA PRONTO"
+                station_color = (175, 165, 125)
+                station_hint = "INICIAR TESTE"
+            else:
+                station_label = "AGUARDE"
+                station_color = (145, 135, 125)
+                station_hint = f"ARQUIVOS {self.documents_collected}/3"
+
+            # Fonte um pouco menor para os textos mais longos do monitor B.
+            label_font = pygame.font.SysFont("arial", 8, bold=True)
+            hint_font = pygame.font.SysFont("arial", 7)
+
+        else:
+            station_label = ""
+            station_color = (145, 150, 145)
+            station_hint = ""
+            label_font = pygame.font.SysFont("arial", 10, bold=True)
+            hint_font = pygame.font.SysFont("arial", 7)
+
+        if station_label:
             label_surface = label_font.render(station_label, True, station_color)
-            self.screen.blit(label_surface, (station.x + 39, station.y + 21))
+            self.screen.blit(label_surface, (station.x + 39, station.y + 18))
+
+            hint_surface = hint_font.render(station_hint, True, (125, 135, 125))
+            self.screen.blit(hint_surface, (station.x + 39, station.y + 31))
         pygame.draw.rect(
             self.screen,
             (55, 55, 55),
