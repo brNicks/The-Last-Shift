@@ -5,18 +5,13 @@ from sprite_loader import load_animation, load_sprite, draw_character
 class Boss:
     def __init__(self, x, y):
         self.rect = pygame.Rect(x, y, 42, 42)
-
-        # Velocidade inicial do chefe.
         self.speed = 1.35
-
-        # O chefe começa escondido/inativo.
         self.active = False
-
-        # Quando começa a perseguir de verdade.
         self.chasing = False
         self.facing = "down"
         self.animation_timer = 0.0
         self.animation_frame = 0
+        self.stage = 0
         self.animations = {
             "down": load_animation("boss/move_down"),
             "up": load_animation("boss/move_up"),
@@ -62,19 +57,18 @@ class Boss:
     def draw(self, screen, camera=None, stage=None):
         if not self.active:
             return
-        if stage is not None:
-            self.stage = max(0, min(4, int(stage)))
 
-        image = None
-        if getattr(self, "stage", 0) > 0:
-            image = self.stage_sprites[self.stage]
+        # O estágio 0 também é uma transformação válida: Calmo.
+        # Só usa animação direcional quando nenhum estágio foi informado.
+        if stage is not None:
+            stage_index = max(0, min(4, int(stage)))
+            image = self.stage_sprites[stage_index]
         else:
             key = "run" if self.chasing else self.facing
             frames = self.animations.get(key, [])
             if not frames:
                 frames = self.animations.get("idle", [])
-            if frames:
-                image = frames[self.animation_frame % len(frames)]
+            image = frames[self.animation_frame % len(frames)] if frames else None
 
         if not draw_character(screen, image, self.rect, camera, (72, 112)):
             target = camera.apply_rect(self.rect) if camera else self.rect
