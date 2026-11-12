@@ -2331,7 +2331,9 @@ class Game:
 
         if self.boss_active:
             self.boss.draw(
-                self.screen
+                self.screen,
+                self.camera,
+                self.b_tension_stage
             )
 
         # -------------------------
