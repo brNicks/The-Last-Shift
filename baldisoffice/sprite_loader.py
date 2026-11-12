@@ -1,10 +1,12 @@
-"""Carregamento de sprites a partir de um atlas compacto."""
+"""Carregador de sprites em atlas compacto, com cache de superfícies."""
 from pathlib import Path
+from io import BytesIO
+import base64
 import json
 import pygame
 
 ROOT = Path(__file__).resolve().parent
-ATLAS_PATH = ROOT / "sprites" / "sprite_atlas.gif"
+ATLAS_PATH = ROOT / "sprites" / "sprite_atlas.b64"
 MANIFEST_PATH = ROOT / "sprites" / "sprite_manifest.json"
 _CACHE = {}
 _SCALE_CACHE = {}
@@ -16,7 +18,8 @@ def _load_atlas():
     global _ATLAS, _MANIFEST
     if _ATLAS is None:
         try:
-            _ATLAS = pygame.image.load(str(ATLAS_PATH)).convert_alpha()
+            raw = base64.b64decode(ATLAS_PATH.read_text(encoding="ascii"))
+            _ATLAS = pygame.image.load(BytesIO(raw), "sprite_atlas.png").convert_alpha()
             with MANIFEST_PATH.open("r", encoding="utf-8") as file:
                 _MANIFEST = json.load(file)
         except (pygame.error, OSError, ValueError):
