@@ -1,4 +1,5 @@
 import pygame
+from sprite_loader import load_sprite, draw_character
 
 class NPC:
 
@@ -8,11 +9,10 @@ class NPC:
 
         self.name = name
         self.dialogue = dialogue
+        # Clara é recepcionista: permanece parada, sem animações de caminhada.
+        self.sprite = load_sprite("clara/seated.png")
 
     def draw(self, screen, camera):
 
-        pygame.draw.rect(
-            screen,
-            (255, 255, 0),
-            camera.apply_rect(self.rect)
-        )
+        if not draw_character(screen, self.sprite, self.rect, camera, (58, 78)):
+            pygame.draw.rect(screen, (255, 255, 0), camera.apply_rect(self.rect))
