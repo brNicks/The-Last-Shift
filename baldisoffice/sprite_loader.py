@@ -1,4 +1,4 @@
-"""Carregador de sprites em atlas compacto, com cache de superfícies."""
+"""Carregador de sprites com atlas compacto e fallback para PNGs individuais."""
 from pathlib import Path
 from io import BytesIO
 import base64
@@ -6,8 +6,9 @@ import json
 import pygame
 
 ROOT = Path(__file__).resolve().parent
-ATLAS_PATH = ROOT / "sprites" / "sprite_atlas.b64"
-MANIFEST_PATH = ROOT / "sprites" / "sprite_manifest.json"
+SPRITES_DIR = ROOT / "sprites"
+ATLAS_PATH = SPRITES_DIR / "sprite_atlas.b64"
+MANIFEST_PATH = SPRITES_DIR / "sprite_manifest.json"
 _CACHE = {}
 _SCALE_CACHE = {}
 _ATLAS = None
@@ -37,7 +38,12 @@ def load_sprite(relative_path):
             rect = pygame.Rect(entry["x"], entry["y"], entry["w"], entry["h"])
             _CACHE[key] = atlas.subsurface(rect).copy()
         else:
-            _CACHE[key] = None
+            # Permite adicionar sprites individuais sem depender do atlas completo.
+            image_path = SPRITES_DIR / key
+            try:
+                _CACHE[key] = pygame.image.load(str(image_path)).convert_alpha()
+            except (pygame.error, OSError):
+                _CACHE[key] = None
     return _CACHE[key]
 
 
