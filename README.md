@@ -1,4 +1,4 @@
-# The Last Shift — V62.1 | Fase 1
+# The Last Shift — V62.2 | Fase 1
 
 Jogo 2D de suspense psicologico em **Python + Pygame**.
 
@@ -21,6 +21,13 @@ No Windows, voce pode usar `py` no lugar de `python` se esse comando estiver dis
 | Enter / mouse | Confirmar no menu |
 | Esc / Espaco | Pular a abertura |
 
+## V62.2 — Correcao dos limites dos mapas
+
+- Escritorios A e B: limites de caminhada ajustados ao piso visivel; o protagonista nao caminha mais sobre a parede superior ou fora das bordas.
+- Patrulha do supervisor do A ajustada para respeitar o piso e os obstaculos.
+- Chefe do B reposicionado para aparecer dentro da area jogavel.
+- Documentos, avaliacoes e saidas mantidos nas posicoes anteriores.
+
 ## V62.1 — Correcao de progresso
 
 - Escritório A e B ficam fechados apos a conclusao; os avisos `[E] Entrar` desaparecem das portas concluidas.
@@ -29,7 +36,7 @@ No Windows, voce pode usar `py` no lugar de `python` se esse comando estiver dis
 - Clara tem falas diferentes antes de pegar o cracha, depois dele e apos terminar o Escritorio A.
 - O dialogo de encerramento com Clara foi preservado.
 
-A abertura, cenarios, documentos, avaliacoes, perseguição e encerramento da Fase 1 permanecem iguais a V62 aprovada. Esta versao V62.1 foi testada e aprovada no Windows antes da publicacao.
+A abertura, cenarios, documentos, avaliacoes, perseguição e encerramento da Fase 1 permanecem iguais a V62 aprovada. A V62.1 foi testada e aprovada no Windows. A V62.2 recebeu aprovacao do autor; o ultimo teste dentro do Pygame pode ser repetido apos a publicacao.
 
 ## Estrutura
 
