@@ -1,41 +1,39 @@
-# The Last Shift — V62 | Fase 1
+# The Last Shift — V62.1 | Fase 1
 
-Jogo 2D de suspense psicológico desenvolvido em **Python + Pygame**.
-
-Você chega à corporação **THE LAST SHIFT**, conhece Clara, cumpre tarefas nos escritórios e descobre que seu expediente não será normal.
-
-## Requisitos
-- Python 3.10 ou mais recente
-- Pygame 2.5 ou mais recente (instalado pelo `requirements.txt`)
+Jogo 2D de suspense psicologico em **Python + Pygame**.
 
 ## Como executar
-Abra um terminal **na pasta principal do repositório** e execute:
 
-```bash
-python -m pip install -r requirements.txt
-python baldisoffice/main.py
-```
+1. Instale o Python 3.10+ e abra esta pasta no VS Code ou em um terminal.
+2. Instale a dependencia: `python -m pip install -r requirements.txt`.
+3. Inicie com: `python baldisoffice/main.py`.
 
-No Windows, use `py` no lugar de `python` caso seja o comando disponível. **Não é necessário nenhum arquivo .bat.**
+No Windows, voce pode usar `py` no lugar de `python` se esse comando estiver disponivel. Tambem e possivel executar `baldisoffice/main.py` pelo botao **Run Python File** do VS Code, escolhendo o interpretador com Pygame instalado. Nao e necessario nenhum arquivo `.bat`.
 
 ## Controles
-| Tecla | Ação |
+
+| Tecla | Acao |
 |---|---|
-| W, A, S, D | Movimentar |
+| W / A / S / D | Andar |
 | Shift | Correr |
-| E | Interagir, falar, coletar documentos |
-| 1–4 | Selecionar respostas |
+| E | Conversar e interagir |
+| 1 a 4 | Escolher respostas |
 | Enter / mouse | Confirmar no menu |
-| Esc | Fechar interfaces / pular a abertura |
-| Espaço | Pular a abertura |
+| Esc / Espaco | Pular a abertura |
+
+## V62.1 — Correcao de progresso
+
+- Escritório A e B ficam fechados apos a conclusao; os avisos `[E] Entrar` desaparecem das portas concluidas.
+- As portas mostram `A CONCLUIDO` / `B CONCLUIDO` na recepcao.
+- Nao e mais possivel reiniciar documentos, avaliacoes, fases do chefe ou missoes entrando de novo nos setores concluidos.
+- Clara tem falas diferentes antes de pegar o cracha, depois dele e apos terminar o Escritorio A.
+- O dialogo de encerramento com Clara foi preservado.
+
+A abertura, cenarios, documentos, avaliacoes, perseguição e encerramento da Fase 1 permanecem iguais a V62 aprovada. Esta versao V62.1 foi testada e aprovada no Windows antes da publicacao.
 
 ## Estrutura
-- `baldisoffice/main.py`: inicialização.
-- `baldisoffice/game.py`: lógica da Fase 1.
-- `baldisoffice/opening_cutscene.py`: abertura cinematográfica.
-- `baldisoffice/assets/`: imagens, animações, cenários e itens.
-- `requirements.txt`: dependências.
 
-**Versão:** V62, Fase 1 aprovada. Esta branch é `feature/sprites-v62`; a `main` permanece separada.
-
-As ferramentas internas de teste, os backups, os scripts de publicação e os recursos antigos não utilizados foram retirados desta branch para manter somente o necessário para jogar.
+- `baldisoffice/main.py` — inicia o jogo.
+- `baldisoffice/game.py` — mecanicas e cenas.
+- `baldisoffice/assets/` — sprites e cenarios.
+- `requirements.txt` — dependencias.

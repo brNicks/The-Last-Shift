@@ -289,6 +289,14 @@ class Game:
         )
 
         self.talked_to_clara = False
+        # Falas contextuais da Clara durante a Fase 1. A conversa final
+        # continua sob controle de phase1_return_pending.
+        self.clara_progress_dialogues = {
+            "badge": "CLARA: Seu cracha esta no hall. Nao entre em nenhum setor sem ele.",
+            "office_a": "CLARA: O Setor A espera por voce. Confira os documentos antes da avaliacao.",
+            "office_b": "CLARA: O Setor B foi liberado... Se ouvir algo estranho, mantenha a calma.",
+            "after_b": "CLARA: Voce voltou... Precisamos conversar sobre o que aconteceu.",
+        }
 
         # =========================
         # SISTEMAS
@@ -1074,9 +1082,7 @@ class Game:
                     )
                     return
 
-                self.dialogue.show(
-                    self.clara.dialogue
-                )
+                self.dialogue.show(self.get_clara_dialogue())
 
                 if not self.talked_to_clara:
 
@@ -1126,12 +1132,16 @@ class Game:
             # PORTA
             # -------------------------
 
-            if self.has_badge and self.player.rect.colliderect(self.office_door.rect.inflate(80, 80)):
-                self.enter_office("A")
+            # Verificar B primeiro: as areas ampliadas das portas se sobrepoem
+            # ligeiramente. Um A concluido nao deve impedir o acesso ao B.
+            if (self.can_enter_office("B") and
+                    self.player.rect.colliderect(self.office_b_door.rect.inflate(80, 80))):
+                self.enter_office("B")
                 return
 
-            if self.office_b_unlocked and self.player.rect.colliderect(self.office_b_door.rect.inflate(80, 80)):
-                self.enter_office("B")
+            if (self.can_enter_office("A") and
+                    self.player.rect.colliderect(self.office_door.rect.inflate(80, 80))):
+                self.enter_office("A")
                 return
 
             # Conversa opcional com o supervisor, sem substituir Clara/cracha/portas.
@@ -1301,7 +1311,38 @@ class Game:
                             or self.evaluation_started or self.math.active),
             )
 
+    def get_clara_dialogue(self):
+        """Seleciona a proxima fala sem reiniciar missoes ja concluidas."""
+        if not self.talked_to_clara:
+            return self.clara.dialogue
+        if not self.has_badge:
+            return self.clara_progress_dialogues["badge"]
+        if not self.office_a_passed:
+            return self.clara_progress_dialogues["office_a"]
+        if not self.office_b_passed:
+            return self.clara_progress_dialogues["office_b"]
+        return self.clara_progress_dialogues["after_b"]
+
+    def can_enter_office(self, office):
+        """Portas concluidas nao reiniciam provas, coleta ou aparencia do chefe."""
+        if self.phase1_return_pending or self.victory:
+            return False
+        if office == "A":
+            return self.has_badge and not self.office_a_passed
+        if office == "B":
+            return self.office_b_unlocked and not self.office_b_passed
+        return False
+
     def enter_office(self, office):
+        # Protecao adicional para chamadas diretas, alem dos prompts de E.
+        # Os testes internos ainda podem iniciar B diretamente, desde que
+        # o setor nao esteja marcado como concluido.
+        if office not in ("A", "B"):
+            raise ValueError("Escritorio desconhecido: " + str(office))
+        if self.victory or self.phase1_return_pending:
+            return False
+        if (office == "A" and self.office_a_passed) or (office == "B" and self.office_b_passed):
+            return False
         self.current_office=office; self.current_room="office_a" if office=="A" else "office_b"
         if office == "A":
             self.supervisor_a_patrol.reset(855, 400)
@@ -1319,6 +1360,8 @@ class Game:
         self.b_corruption_anim_timer=0.0
         self.b_ambient_event_timer=0.0; self.b_ambient_event_cooldown=10.0; self.b_ambient_event_active=False; self.b_ambient_event_shift=0; self.b_ambient_event_type=0
         self.objective="Encontrar os documentos"; self.mission_ui.show("ESCRITORIO "+office,"Encontre os 3 documentos")
+        return True
+
     def get_current_documents(self):
         return self.a_documents if self.current_office=="A" else self.b_documents
     def get_current_station(self):
@@ -1793,20 +1836,15 @@ class Game:
                 self.interaction_text = "[E] Pegar"
                 self.interaction_rect = self.badge.rect
 
-            elif (
-                self.has_badge
-                and self.player.rect.colliderect(
-                    self.office_door.rect.inflate(80, 80)
-                )
-            ):
+            elif (self.can_enter_office("B") and self.player.rect.colliderect(
+                    self.office_b_door.rect.inflate(80, 80))):
+                self.interaction_text = "[E] Entrar no B"
+                self.interaction_rect = self.office_b_door.rect
+
+            elif (self.can_enter_office("A") and self.player.rect.colliderect(
+                    self.office_door.rect.inflate(80, 80))):
                 self.interaction_text = "[E] Entrar"
                 self.interaction_rect = self.office_door.rect
-
-            elif self.office_b_unlocked and self.player.rect.colliderect(
-                self.office_b_door.rect.inflate(80,80)
-                ):
-                self.interaction_text="[E] Entrar no B"
-                self.interaction_rect=self.office_b_door.rect
 
             elif (self.supervisor_visible_in_reception() and
                   self.player.rect.colliderect(self.supervisor_reception_rect.inflate(105, 105))):
@@ -2232,6 +2270,7 @@ class Game:
         is_clara_line = self.dialogue.full_text in (
             self.clara.dialogue,
             "Voce sobreviveu ao seu primeiro turno...",
+            *self.clara_progress_dialogues.values(),
         )
         is_clara_speaking = (
             self.dialogue.active
@@ -2257,21 +2296,26 @@ class Game:
 
         # Portas no mesmo lugar e com a mesma hitbox da versão aprovada.
         self.reception_art.draw_door(
-            self.screen, self.camera, self.office_door.rect, True, "A")
+            self.screen, self.camera, self.office_door.rect,
+            not self.office_a_passed, "A")
         self.reception_art.draw_door(
             self.screen, self.camera, self.office_b_door.rect,
-            self.office_b_unlocked, "B")
+            self.office_b_unlocked and not self.office_b_passed, "B")
 
-        label_a = self.big_font.render("A", True, WHITE)
-        label_b = self.big_font.render("B", True, WHITE)
         a_pos = self.camera.apply_rect(self.office_door.rect)
         b_pos = self.camera.apply_rect(self.office_b_door.rect)
-        self.screen.blit(label_a, (a_pos.centerx-label_a.get_width()//2, a_pos.top-45))
-        if self.office_b_unlocked:
-            self.screen.blit(label_b, (b_pos.centerx-label_b.get_width()//2, b_pos.top-45))
+        if self.office_a_passed:
+            label_a = self.font.render("A CONCLUIDO", True, (184, 183, 172))
         else:
-            locked = self.font.render("B BLOQUEADO", True, (180,180,180))
-            self.screen.blit(locked, (b_pos.centerx-locked.get_width()//2, b_pos.top-40))
+            label_a = self.big_font.render("A", True, WHITE)
+        self.screen.blit(label_a, (a_pos.centerx-label_a.get_width()//2, a_pos.top-45))
+        if self.office_b_passed:
+            label_b = self.font.render("B CONCLUIDO", True, (184, 183, 172))
+        elif self.office_b_unlocked:
+            label_b = self.big_font.render("B", True, WHITE)
+        else:
+            label_b = self.font.render("B BLOQUEADO", True, (180, 180, 180))
+        self.screen.blit(label_b, (b_pos.centerx-label_b.get_width()//2, b_pos.top-45))
 
         self.sprite_renderer.draw_character(
             self.screen, "protagonista", self.player.rect, self.camera, key="protagonista"
