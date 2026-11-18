@@ -1,41 +1,63 @@
-# 🎮 The Last Shift
+# The Last Shift — V62 | Fase 1 consolidada
 
-**The Last Shift** é um jogo 2D de terror psicológico desenvolvido em **Python**, utilizando a biblioteca **Pygame**.
+**Jogo 2D de suspense psicológico**, desenvolvido em Python e Pygame. O primeiro expediente começa com o protagonista chegando de ônibus à sede da corporação **THE LAST SHIFT**. Lá dentro, ele conversa com Clara, recebe o crachá, realiza tarefas nos Escritórios A e B e presencia as transformações de seu supervisor.
 
-## 📖 Sobre o jogo
+> **Estado:** versão consolidada da Fase 1, baseada na **V62 Parte 22.2**, testada e aprovada pelo desenvolvedor no Windows. O projeto **V61** e a branch **`main`** não foram alterados.
 
-Ambientado em um ambiente corporativo aparentemente comum, The Last Shift coloca o jogador em uma jornada de investigação, desafios matemáticos e suspense psicológico.
+## Requisitos
 
-O que começa como um simples expediente de trabalho rapidamente se transforma em uma experiência perturbadora. Ao explorar os escritórios, coletar documentos e realizar avaliações, o jogador percebe que existe algo muito errado naquele lugar.
+- Windows 10/11, Python 3 instalado e comando `py` disponível;
+- Pygame 2.5.0 ou mais recente (o atalho de execução tenta instalar a dependência, quando necessário).
 
-## 🎯 Objetivo
+## Executar
 
-Explorar os ambientes, encontrar documentos, resolver avaliações matemáticas e descobrir os mistérios escondidos por trás da empresa, enquanto tenta sobreviver aos acontecimentos estranhos que surgem durante o expediente.
+1. Extraia o ZIP **inteiro** em uma pasta (não execute diretamente dentro do ZIP).
+2. Abra `EXECUTAR_NO_WINDOWS.bat`.
+3. No menu, escolha **JOGAR** ou veja a tela **CONTROLES**.
+4. A abertura mostra ônibus, desembarque, caminhada, portas automáticas, fachada e entrada pelo hall inferior da recepção.
 
-## 🕹️ Características
+**No terminal / VS Code:**
 
-- Exploração em perspectiva 2D top-down.
-- Desafios e avaliações matemáticas.
-- Coleta e investigação de documentos.
-- Sistema de movimentação e corrida com stamina.
-- Personagem perseguidor com inteligência artificial.
-- Sistema de tensão e eventos ambientais.
-- Elementos de terror psicológico e suspense.
-- Narrativa desenvolvida progressivamente.
+```bash
+python -m pip install -r requirements.txt
+python baldisoffice/main.py
+```
 
-## 🛠️ Tecnologias utilizadas
+Em Windows também é possível usar `py` no lugar de `python`.
 
-- Python
-- Pygame
+## Controles
 
-## 🚧 Desenvolvimento
+| Tecla | Ação |
+| --- | --- |
+| `W`, `A`, `S`, `D` | Movimentar |
+| `Shift` | Correr (gasta estamina) |
+| `E` | Conversar, coletar itens, interagir com portas e terminais |
+| `1` a `4` | Selecionar resposta em avaliações |
+| `Esc` | Fechar diálogos/interfaces ou pular a abertura |
+| `Espaço` | Pular apenas a abertura; confirmar no menu |
+| `↑/↓` ou `W/S` | Navegar no menu |
+| `Enter` e mouse | Confirmar opções do menu |
 
-O projeto está em desenvolvimento e recebe melhorias progressivas em suas mecânicas, ambientação, narrativa e elementos visuais.
+O protagonista fica parado durante o encerramento com Clara. Pular a animação inicial preserva o mesmo ponto de entrada no hall inferior.
 
-## 👨‍💻 Desenvolvedor
+## Estrutura
 
-Projeto desenvolvido como iniciativa de aprendizado e desenvolvimento de jogos, envolvendo programação, lógica, design de jogos e construção narrativa.
+- `baldisoffice/main.py` — inicialização do jogo.
+- `baldisoffice/game.py` — cenas, mecânicas, avaliações, interfaces e progresso da fase.
+- `baldisoffice/opening_cutscene.py` — abertura cinematográfica.
+- `baldisoffice/assets/` — artes da recepção, Escritórios A/B, ônibus, fachada, personagens e itens.
+- `TESTES_OPCIONAIS/` — atalhos de verificação de cenas específicas.
+- `VERIFICAR_PROJETO.py` — verificação opcional em Python (sintaxe, integridade dos arquivos e PNG).
+- `VERIFICAR_PACOTE.ps1` — verificação de integridade SHA256 e assinatura PNG com PowerShell, sem Python.
+- `CHECKLIST_FASE1_FINAL.md` — checklist de teste no jogo real.
+- `CHANGELOG_V62.md` — resumo das mudanças.
+- `PUBLICAR_NA_FEATURE_V62.bat` — assistente **opcional** para publicar apenas na branch de desenvolvimento, depois de validar tudo.
 
----
+## Antes do GitHub
 
-*Nem todo expediente termina quando o relógio marca o fim do turno.*
+1. Execute `powershell -NoProfile -ExecutionPolicy Bypass -File .\VERIFICAR_PACOTE.ps1` para conferir o pacote mesmo sem o comando `py` disponível.
+2. O teste completo no Windows já foi aprovado pelo desenvolvedor; repita se alterar arquivos.
+3. Publique na branch **`feature/sprites-v62`**, mantendo a **`main`** intocada; instruções em `GITHUB_PUBLICACAO.md`.
+4. Faça o merge na `main` somente se e quando decidir, após conferir o diff.
+
+**Nenhum conteúdo foi enviado ao GitHub por este pacote.** O teste gráfico no Windows foi confirmado pelo desenvolvedor; o empacotamento não executou o Pygame novamente.
