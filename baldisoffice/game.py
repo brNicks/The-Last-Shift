@@ -441,7 +441,7 @@ class Game:
         # O chefe aparece depois de erros suficientes.
         self.boss = Boss(
             1050,
-            180
+            250  # Piso do Escritório B (a parede superior termina em Y=174).
         )
 
         # V62: atlas visual dos personagens; nao altera hitboxes ou movimentacao.
@@ -480,12 +480,14 @@ class Game:
         self.supervisor_a_patrol = SupervisorPatrol(
             self.supervisor_a_rect,
             waypoints=[
-                (1080, 145), (650, 165), (330, 150), (120, 180),
-                (120, 455), (215, 565), (575, 558), (930, 565),
-                (1090, 510), (1100, 225), (850, 405),
+                # O fiscal permanece sobre o piso, sem andar sobre a parede
+                # superior. As mesas e o terminal conservam suas hitboxes.
+                (1080, 220), (650, 220), (330, 220), (135, 225),
+                (135, 440), (215, 545), (575, 540), (930, 545),
+                (1080, 495), (1090, 240), (850, 395),
             ],
             blockers=list(self.office_a_obstacles) + [self.math_station],
-            bounds=(100, 100, 1180, 620),
+            bounds=(120, 204, 1160, 600),
             speed=55.0,
         )
         self.supervisor_a_errors = 0
@@ -1354,7 +1356,7 @@ class Game:
         self.math=MathChallenge(); self.evaluation_started=False; self.evaluation_has_started=False
         self.evaluation_finished=False; self.evaluation_intro_timer=0.0; self.escape_transition_timer=0.0; self.recovery_mode=False; self.b_insane_active=False; self.b_exit_unlocked=False; self.dialogue.hide()
         self.boss_active=False; self.boss.active=False; self.boss_state="idle"; self.boss.chasing=False
-        self.boss.rect.topleft=(1050,180); self.boss_path=[]; self.boss_path_target=None; self.boss_roam_target=None
+        self.boss.rect.topleft=(1050,250); self.boss_path=[]; self.boss_path_target=None; self.boss_roam_target=None
         self.boss_stuck_timer=0.0; self.boss_last_position=pygame.Vector2(self.boss.rect.center)
         self.b_tension=0.0; self.b_tension_max=100.0; self.b_tension_stage=0
         self.b_corruption_anim_timer=0.0
@@ -4110,7 +4112,7 @@ class Game:
         self.boss_active=False; self.boss.active=False; self.boss_path=[]; self.boss_path_target=None
         self.boss_path_timer=0.0; self.boss.chasing=False; self.boss.speed=1.35; self.boss_state="idle"
         self.boss_roam_target=None; self.boss_roam_wait=0.0; self.boss_search_timer=0; self.boss_last_seen=None
-        self.boss_lost_sight_timer=0.0; self.boss_alert_text=""; self.boss_alert_timer=0.0; self.boss.rect.topleft=(1050,180)
+        self.boss_lost_sight_timer=0.0; self.boss_alert_text=""; self.boss_alert_timer=0.0; self.boss.rect.topleft=(1050,250)
         self.game_over=False; self.checkpoint_active=False; self.checkpoint_timer=0
         self.objective="Encontrar os documentos"; self.dialogue.hide()
         self.mission_ui.show("CHECKPOINT","Encontre os 3 documentos novamente.")
@@ -4195,8 +4197,16 @@ class Game:
         elif self.b_tension < 100: self.b_tension_stage = 4
         else: self.b_tension_stage = 5
     def get_office_room_bounds(self):
-        # Este e exatamente o retangulo do piso desenhado na tela.
-        return pygame.Rect(100, 100, 1080, 520)
+        """Area jogavel compartilhada pelos escritorios A e B.
+
+        As artes de ambos os setores possuem parede superior ate Y~174,
+        rodape inferior em Y~600 e paredes laterais em X~100 e X~1180.
+        O rect do personagem tem 40px, mas a sprite de 88px e ancorada
+        pelos pes: Y=204 reserva uma pequena margem visual para a cabeca
+        sem permitir que o personagem caminhe SOBRE a parede.
+        Os limites ja consideram o espaco para a sprite e as bordas.
+        """
+        return pygame.Rect(120, 204, 1040, 396)
     def get_boss_room_bounds(self):
         return self.get_office_room_bounds()
     def get_navigation_obstacles(self):
