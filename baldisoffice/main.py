@@ -1,9 +1,8 @@
 import pygame
-
 from game import Game
-
-pygame.init()
-
-game = Game()
-
-game.run() 
+if __name__ == '__main__':
+    pygame.init()
+    try:
+        Game().run()
+    finally:
+        pygame.quit()

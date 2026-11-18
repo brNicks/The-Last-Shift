@@ -1,0 +1,44 @@
+{
+  "cell_size": [
+    72,
+    164
+  ],
+  "rows": {
+    "protagonista/baixo": 0,
+    "protagonista/cima": 1,
+    "protagonista/esquerda": 2,
+    "protagonista/direita": 3,
+    "protagonista/correndo": 4,
+    "protagonista/parado": 5,
+    "protagonista/interagindo": 6,
+    "clara/baixo": 7,
+    "clara/cima": 8,
+    "clara/esquerda": 9,
+    "clara/direita": 10,
+    "clara/correndo": 11,
+    "clara/parado": 12,
+    "clara/interagindo": 13,
+    "chefe/baixo": 14,
+    "chefe/cima": 15,
+    "chefe/esquerda": 16,
+    "chefe/direita": 17,
+    "chefe/correndo": 18,
+    "chefe/parado": 19,
+    "chefe/interagindo": 20
+  },
+  "notes": "Rows 0-6 protagonist, 7-13 Clara (only row 12 seated static), 14-20 boss.",
+  "atlas_dimensions": [
+    288,
+    3444
+  ],
+  "stage_atlas_dimensions": [
+    288,
+    1120
+  ],
+  "clara_source_bbox": [
+    220,
+    6,
+    808,
+    1513
+  ]
+}

@@ -1,7 +1,9 @@
-# THE LAST SHIFT — V56: polimento narrativo dos documentos da Fase 1
+# THE LAST SHIFT — V62 PARTE 13: animacao de bracos do chefe (preserva patrulha da Parte 12)
+# Baseada na Parte 9: caminhada autentica do chefe com cinco estagios
 import pygame
 import random
 import math
+import os
 
 from settings import *
 
@@ -18,6 +20,207 @@ from door import Door
 
 from math_challenge import MathChallenge
 from boss import Boss
+from supervisor_patrol import SupervisorPatrol
+from reception_art import ReceptionArt
+from office_a_art import OfficeAArt
+from office_b_art import OfficeBArt
+from document_art import DocumentArt
+from opening_cutscene import OpeningCutscene
+
+# Parte 22.2: a animacao termina no acesso inferior da recepcao.
+# O primeiro frame jogavel usa a mesma entrada; a passagem entre
+# paredes do mapa (x=704..768) fica livre para caminhar ate Clara.
+RECEPTION_ENTRANCE_SPAWN = (720, 510)
+
+
+class CharacterSpriteRenderer:
+    """Carrega e anima os personagens usando os atlas PNG em assets/sprites."""
+    STATES = ("baixo", "cima", "esquerda", "direita", "correndo", "parado", "interagindo")
+    CHARACTERS = ("protagonista", "clara", "chefe")
+    ROWS = {("protagonista", "baixo"):0, ("protagonista", "cima"):1,
+            ("protagonista", "esquerda"):2, ("protagonista", "direita"):3,
+            ("protagonista", "correndo"):4, ("protagonista", "parado"):5,
+            ("protagonista", "interagindo"):6,
+            ("clara", "baixo"):7, ("clara", "cima"):8,
+            ("clara", "esquerda"):9, ("clara", "direita"):10,
+            ("clara", "correndo"):11, ("clara", "parado"):12,
+            ("clara", "interagindo"):13,
+            ("chefe", "baixo"):14, ("chefe", "cima"):15,
+            ("chefe", "esquerda"):16, ("chefe", "direita"):17,
+            ("chefe", "correndo"):18, ("chefe", "parado"):19,
+            ("chefe", "interagindo"):20}
+    COUNTS = {"baixo":4, "cima":4, "esquerda":3, "direita":3,
+              "correndo":4, "parado":2, "interagindo":2}
+    STAGE_ROWS = {"calmo":0, "irritado":1, "estranho":2, "voz_alterada":3, "insano":4}
+
+    def __init__(self, asset_dir):
+        self.asset_dir = asset_dir
+        self.atlas = pygame.image.load(os.path.join(asset_dir, "personagens_atlas.png")).convert_alpha()
+        # O atlas antigo é preservado por compatibilidade, mas não é mais usado para o chefe.
+        self.stage_atlas = None
+        self.cell_w, self.cell_h = 72, 164
+        self.stage_w, self.stage_h = 144, 224
+        self.last_positions = {}
+        self.animation_clock = {}
+        self.directions = {}
+        self.last_motion = {}
+        # Retem brevemente a animacao em deslocamentos menores que 1px/frame.
+        # Isso impede que a patrulha lenta do chefe congele a cada quadro.
+        self.boss_last_movement_ticks = {}
+        # V62 / Parte 4: sprites individuais no estilo corporativo neutro.
+        # São carregadas sem depender do antigo atlas de personagens.
+        self.protagonist_frames = {}
+        for facing in ("baixo", "cima", "esquerda", "direita"):
+            folder = os.path.join(self.asset_dir, "v62_neutro", "protagonista", facing)
+            self.protagonist_frames[facing] = [
+                pygame.image.load(os.path.join(folder, f"{index}.png")).convert_alpha()
+                for index in range(4)
+            ]
+
+        # V62 / Parte 5: Clara sentada, estática, com boca animada.
+        # Todas as imagens possuem as mesmas dimensões e ficam na mesma posição.
+        clara_folder = os.path.join(self.asset_dir, "v62_neutro", "clara")
+        self.clara_idle = pygame.image.load(
+            os.path.join(clara_folder, "idle.png")
+        ).convert_alpha()
+        self.clara_talk = pygame.image.load(
+            os.path.join(clara_folder, "talk.png")
+        ).convert_alpha()
+        # V62 Parte 7: Clara ligeiramente maior (46x84 -> 52x94).
+        # Escala pixelada, sem suavização. Não altera o retângulo de interação.
+        clara_size = (52, 94)
+        self.clara_idle = pygame.transform.scale(self.clara_idle, clara_size)
+        self.clara_talk = pygame.transform.scale(self.clara_talk, clara_size)
+
+        # V62 Parte 8: cinco transformações em quatro direções reais.
+        self.boss_directional_frames = {}
+        for stage in ("calmo", "irritado", "estranho", "voz_alterada", "insano"):
+            self.boss_directional_frames[stage] = {}
+            for direction in ("baixo", "cima", "esquerda", "direita"):
+                folder = os.path.join(self.asset_dir, "v62_neutro", "chefe", stage, direction)
+                self.boss_directional_frames[stage][direction] = [
+                    pygame.image.load(os.path.join(folder, f"{index}.png")).convert_alpha()
+                    for index in range(4)
+                ]
+
+    def _camera_rect(self, rect, camera):
+        if camera is not None:
+            return camera.apply_rect(rect)
+        return rect.copy()
+
+    def _get_motion(self, key, rect):
+        center = pygame.Vector2(rect.center)
+        previous = self.last_positions.get(key, center)
+        delta = center - previous
+        self.last_positions[key] = center
+        if delta.length_squared() > 0.04:
+            if abs(delta.x) > abs(delta.y):
+                direction = "direita" if delta.x > 0 else "esquerda"
+            else:
+                direction = "baixo" if delta.y > 0 else "cima"
+            self.directions[key] = direction
+            self.last_motion[key] = delta.length()
+        else:
+            self.last_motion[key] = 0.0
+        return self.directions.get(key, "baixo"), self.last_motion.get(key, 0.0)
+
+    def _frame(self, character, state, frame_index):
+        row = self.ROWS[(character, state)]
+        count = self.COUNTS[state]
+        frame_index %= count
+        # As células têm 72x164; as animações menores usam as primeiras células.
+        return self.atlas.subsurface((frame_index*self.cell_w, row*self.cell_h, self.cell_w, self.cell_h))
+
+    def draw_character(self, screen, character, rect, camera=None, key=None, scale=None, force_state=None):
+        key = key or character
+        direction, speed = self._get_motion(key, rect)
+        if character == "protagonista":
+            # Mantém a última direção ao parar. Mesmo correndo, não troca
+            # para uma sprite genérica voltada sempre para a frente.
+            frames = self.protagonist_frames[direction]
+            moving = speed > 0.2
+            if moving:
+                # Sequência de quatro quadros: passo E -> pés juntos -> passo D -> pés juntos.
+                # Ao correr, os mesmos passos ficam mais rápidos.
+                delay = 90 if speed >= 5.5 else 145
+                frame_index = int(pygame.time.get_ticks() / delay) % len(frames)
+            else:
+                # Quadro 1: postura neutra, sem congelar no meio de uma passada.
+                frame_index = 1
+            image = frames[frame_index]
+            target = self._camera_rect(rect, camera)
+            screen.blit(image, (
+                target.centerx - image.get_width() // 2,
+                target.bottom - image.get_height() + 6,
+            ))
+            return
+        if force_state:
+            state = force_state
+        elif speed <= 0.2:
+            state = "parado"
+        elif speed >= 4.0:
+            state = "correndo"
+        else:
+            state = direction
+        count = self.COUNTS[state]
+        tick = pygame.time.get_ticks()
+        frame_index = int(tick / (105 if state == "correndo" else 155)) % count
+        frame = self._frame(character, state, frame_index)
+        if scale is None:
+            scale = (70, 112) if character != "chefe" else (76, 120)
+        image = pygame.transform.smoothscale(frame, scale)
+        target = self._camera_rect(rect, camera)
+        # O retângulo lógico continua pequeno para colisões; o desenho é alinhado pelos pés.
+        pos = (target.centerx-image.get_width()//2, target.bottom-image.get_height()+7)
+        screen.blit(image, pos)
+
+    def draw_clara(self, screen, rect, camera=None, speaking=False):
+        """Clara nunca anda: alterna somente a boca durante o diálogo dela."""
+        image = self.clara_idle
+        if speaking and (pygame.time.get_ticks() // 160) % 2 == 1:
+            image = self.clara_talk
+        target = self._camera_rect(rect, camera)
+        screen.blit(image, (
+            target.centerx - image.get_width() // 2,
+            target.bottom - image.get_height() + 6,
+        ))
+
+    def draw_boss(self, screen, rect, stage=0, camera=None, key="chefe"):
+        """Renderiza estágio + orientação REAL do deslocamento do chefe.
+
+        A IA, colisão e perseguição ficam no Game.move_boss_towards, sem alterações.
+        A aparência nunca é fixa na direção frontal durante uma perseguição.
+        """
+        direction, motion = self._get_motion(key, rect)
+        tick = pygame.time.get_ticks()
+        if motion > 0.2:
+            self.boss_last_movement_ticks[key] = tick
+        elif tick - self.boss_last_movement_ticks.get(key, -10000) < 130:
+            # Pixel rounding: a patroIha move < 1 pixel por quadro.
+            # Nao alternar entre animacao e pose neutra nesses frames.
+            motion = 1.0
+        stage_names = ("calmo", "irritado", "estranho", "voz_alterada", "insano")
+        # A tensão da V61 tem índice final 5. Ambos 4 e 5 usam 'insano'.
+        stage_name = stage_names[max(0, min(4, int(stage)))]
+        frames = self.boss_directional_frames[stage_name][direction]
+        if motion > 0.2:
+            # Quatro poses autenticas: passo esquerdo, neutro, direito, neutro.
+            # Mantem a direcao real mesmo em perseguicao, sem pose frontal fixa.
+            delay_ms = 100 if (motion >= 5.5 or stage_name == "insano") else 165
+            frame_index = (pygame.time.get_ticks() // delay_ms) % len(frames)
+        else:
+            frame_index = 1  # parado: pes juntos, na ultima direcao real
+        image = frames[frame_index]
+        # Aprovado: pixel art e proporção próximas às do protagonista/Clara.
+        # Escala simples (sem smoothscale) para preservar as bordas de pixel art.
+        if key in ("chefe_recepcao", "chefe_supervisor_a"):
+            image = pygame.transform.scale(image, (72, 104))
+        target = self._camera_rect(rect, camera)
+        # V62 Parte 13: leve movimento vertical visual acompanhando o passo.
+        # Nao altera retangulo logico, colisoes, patrulha nem IA.
+        passo_vertical = -1 if motion > 0.2 and frame_index in (0, 2) else 0
+        screen.blit(image, (target.centerx - image.get_width() // 2,
+                            target.bottom - image.get_height() + 8 + passo_vertical))
 
 
 class Game:
@@ -69,10 +272,8 @@ class Game:
         # JOGADOR
         # =========================
 
-        self.player = Player(
-            150,
-            150
-        )
+        self.player = Player(*RECEPTION_ENTRANCE_SPAWN)
+        self.player.facing = "up"  # Chega pela entrada e segue em direcao a Clara.
 
         self.camera = Camera()
 
@@ -235,8 +436,53 @@ class Game:
             180
         )
 
+        # V62: atlas visual dos personagens; nao altera hitboxes ou movimentacao.
+        sprite_asset_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "sprites")
+        self.sprite_renderer = CharacterSpriteRenderer(sprite_asset_dir)
+        self.reception_art = ReceptionArt()  # Parte 15: cenário visual em camadas
+        self.office_a_art = OfficeAArt()  # Parte 18: arte estática sem alterar hitboxes
+        self.office_b_art = OfficeBArt()  # Parte 20: arte polida do B em camadas
+        self.document_art = DocumentArt()  # Parte 19: documentos sem blocos azuis
+        # Parte 22: abertura cinematografica. O progresso nao avanca durante INTRO.
+        self.opening = OpeningCutscene(os.path.join(os.path.dirname(__file__), "assets"))
+        self.opening_fade = 0.0
+
         self.boss_active = False
         self.game_over = False
+
+        # V62 / Parte 10: o mesmo chefe aparece antes como supervisor.
+        # Rects independentes: NÃO ativam Boss.active nem a IA de perseguicao.
+        self.supervisor_reception_rect = pygame.Rect(760, 240, 42, 42)
+        self.supervisor_a_rect = pygame.Rect(855, 400, 42, 42)
+        # Rotas abrangentes sem mudar colisao, objetivos ou IA do chefe no B.
+        # Recepcao: volta pelo hall e circula pela area externa do balcao.
+        self.supervisor_reception_patrol = SupervisorPatrol(
+            self.supervisor_reception_rect,
+            waypoints=[
+                (790, 125), (1120, 135), (1370, 220), (1370, 445),
+                (1100, 480), (835, 470), (580, 475), (235, 440),
+                (170, 275), (220, 130), (745, 125),
+            ],
+            blockers=list(self.map.walls) + [pygame.Rect(318, 190, 388, 67)],
+            bounds=(64, 64, 1472, 576),
+            speed=62.0,
+        )
+        # Escritorio A: fiscal visita lado esquerdo, setor superior e
+        # corredores inferiores, contornando moveis e terminal da avaliacao.
+        self.supervisor_a_patrol = SupervisorPatrol(
+            self.supervisor_a_rect,
+            waypoints=[
+                (1080, 145), (650, 165), (330, 150), (120, 180),
+                (120, 455), (215, 565), (575, 558), (930, 565),
+                (1090, 510), (1100, 225), (850, 405),
+            ],
+            blockers=list(self.office_a_obstacles) + [self.math_station],
+            bounds=(100, 100, 1180, 620),
+            speed=55.0,
+        )
+        self.supervisor_a_errors = 0
+        self.supervisor_a_stage = 0  # Calmo -> Irritado -> Estranho -> Alterado
+        self.supervisor_met = False
 
         # Estados da IA:
         # idle, patrol, heard, search, chase e insane.
@@ -478,19 +724,18 @@ class Game:
         # -----------------------------------------------------
         # BOTÕES
         # -----------------------------------------------------
-        options = ["JOGAR", "SAIR"]
+        options = ["JOGAR", "CONTROLES", "SAIR"]
         self.menu_option_rects = []
         mouse_pos = pygame.mouse.get_pos()
 
         for i, option in enumerate(options):
             rect = pygame.Rect(0, 0, 260, 50)
-            rect.center = (WIDTH // 2, 345 + i * 65)
+            rect.center = (WIDTH // 2, 329 + i * 63)
             self.menu_option_rects.append(rect)
 
             hovered = rect.collidepoint(mouse_pos)
-            if hovered:
+            if hovered and self.menu_mouse_active:
                 self.menu_selected = i
-                self.menu_mouse_active = True
 
             selected = (i == self.menu_selected)
             pulse = int(4 * (0.5 + 0.5 * math.sin(now / 180)))
@@ -528,7 +773,7 @@ class Game:
             "Seu primeiro turno deveria ser apenas o começo.",
             True, (72, 72, 75)
         )
-        self.screen.blit(hint, hint.get_rect(center=(WIDTH // 2, 510)))
+        self.screen.blit(hint, hint.get_rect(center=(WIDTH // 2, 548)))
 
         controls = subtitle_font.render(
             "[W/S ou ↑/↓] SELECIONAR     [ENTER/ESPAÇO] CONFIRMAR     [ESC] SAIR",
@@ -550,51 +795,140 @@ class Game:
                 h = rng.randint(1, 3)
                 pygame.draw.rect(self.screen, (90, 90, 94), (0, y, WIDTH, h))
 
+    def draw_controls(self):
+        """Tela informativa no menu, sem carregar partidas ou alterar estado da Fase 1."""
+        self.screen.fill((9, 11, 15))
+        for y in range(0, HEIGHT, 32):
+            pygame.draw.line(self.screen, (19, 23, 27), (0, y), (WIDTH, y), 1)
+        for x in range(0, WIDTH, 64):
+            pygame.draw.line(self.screen, (17, 21, 24), (x, 0), (x, HEIGHT), 1)
+
+        title_font = pygame.font.SysFont(None, 64)
+        section_font = pygame.font.SysFont(None, 32)
+        entry_font = pygame.font.SysFont(None, 25)
+        small_font = pygame.font.SysFont(None, 22)
+
+        title = title_font.render("CONTROLES", True, (233, 233, 231))
+        self.screen.blit(title, title.get_rect(center=(WIDTH // 2, 101)))
+        intro = small_font.render("MANUAL DO FUNCIONARIO  /  FASE 1", True, (130, 149, 146))
+        self.screen.blit(intro, intro.get_rect(center=(WIDTH // 2, 148)))
+
+        panels = (
+            (155, "MOVIMENTACAO", (
+                ("W A S D", "Mover o personagem"),
+                ("SHIFT", "Correr (consome energia)"),
+                ("E", "Falar, coletar e interagir"),
+                ("ESC", "Fechar dialogo ou avaliacao"),
+            )),
+            (665, "AVALIACAO E MENU", (
+                ("1  2  3  4", "Selecionar resposta"),
+                ("W / S", "Navegar pelo menu"),
+                ("ENTER / ESPACO", "Confirmar opcao"),
+                ("MOUSE", "Escolher opcao no menu"),
+            )),
+        )
+        for x, heading, items in panels:
+            card = pygame.Rect(x, 207, 460, 308)
+            pygame.draw.rect(self.screen, (20, 25, 29), card, border_radius=9)
+            pygame.draw.rect(self.screen, (71, 92, 93), card, 2, border_radius=9)
+            header = section_font.render(heading, True, (192, 213, 208))
+            self.screen.blit(header, (x + 27, 230))
+            pygame.draw.line(self.screen, (59, 77, 79),
+                             (x + 25, 275), (x + 434, 275), 1)
+            for idx, (key, desc) in enumerate(items):
+                line_y = 297 + idx * 52
+                key_label = entry_font.render(key, True, (226, 226, 221))
+                desc_label = entry_font.render(desc, True, (157, 170, 168))
+                self.screen.blit(key_label, (x + 27, line_y))
+                self.screen.blit(desc_label, (x + 197, line_y))
+
+        self.controls_back_rect = pygame.Rect(0, 0, 254, 51)
+        self.controls_back_rect.center = (WIDTH // 2, 599)
+        mouse_over = self.controls_back_rect.collidepoint(pygame.mouse.get_pos())
+        border = (163, 188, 180) if mouse_over else (78, 97, 95)
+        pygame.draw.rect(self.screen, (26, 35, 38), self.controls_back_rect, border_radius=7)
+        pygame.draw.rect(self.screen, border, self.controls_back_rect, 2, border_radius=7)
+        back_label = section_font.render("VOLTAR", True, (237, 237, 232))
+        self.screen.blit(back_label, back_label.get_rect(center=self.controls_back_rect.center))
+
+        footer = small_font.render("[ESC / ENTER / ESPACO] VOLTAR AO MENU", True, (118, 129, 128))
+        self.screen.blit(footer, footer.get_rect(center=(WIDTH // 2, 663)))
+
+    def handle_controls_event(self, event):
+        if event.type == pygame.QUIT:
+            self.running = False
+        elif event.type == pygame.KEYDOWN and event.key in (
+            pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_SPACE, pygame.K_BACKSPACE
+        ):
+            self.game_state = "MENU"
+            self.menu_selected = 1
+            self.menu_mouse_active = False
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.controls_back_rect.collidepoint(event.pos):
+                self.game_state = "MENU"
+                self.menu_selected = 1
+                self.menu_mouse_active = False
+
+    def activate_menu_option(self):
+        """O clique e o teclado executam exatamente a mesma acao."""
+        if self.menu_selected == 0:
+            self.opening.reset()
+            self.game_state = "INTRO"
+        elif self.menu_selected == 1:
+            self.game_state = "CONTROLS"
+        elif self.menu_selected == 2:
+            self.running = False
+
+    def finish_opening(self):
+        """Entrega o controle ao jogador APENAS ao fim ou ao pular a introducao."""
+        self.game_state = "GAME"
+        # Parte 22.2: ao sair da cena, continuar no hall inferior,
+        # sem teletransportar o protagonista para perto da Clara.
+        # Vale tanto ao assistir a abertura como ao pula-la com Esc/Espaco.
+        self.player.rect.topleft = RECEPTION_ENTRANCE_SPAWN
+        self.player.facing = "up"
+        self.player.moving = False
+        self.player.running = False
+        self.player.interacting = False
+        # O renderer usa a ultima direcao detectada (e nao Player.facing).
+        self.sprite_renderer.directions["protagonista"] = "cima"
+        self.sprite_renderer.last_positions["protagonista"] = pygame.Vector2(self.player.rect.center)
+        self.camera.update(self.player.rect)
+        self.opening_fade = 0.50
+        self.mission_ui.show("NOVA MISSAO", "Falar com Clara")
+
+    def handle_opening_event(self, event):
+        if event.type == pygame.QUIT:
+            self.running = False
+        elif event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_SPACE):
+            self.finish_opening()
+
     def handle_menu_event(self, event):
-        if event.type == pygame.KEYDOWN:
+        if event.type == pygame.QUIT:
+            self.running = False
+        elif event.type == pygame.KEYDOWN:
             if event.key in (pygame.K_UP, pygame.K_w):
-                self.menu_selected = (self.menu_selected - 1) % 2
+                self.menu_selected = (self.menu_selected - 1) % 3
                 self.menu_mouse_active = False
-
             elif event.key in (pygame.K_DOWN, pygame.K_s):
-                self.menu_selected = (self.menu_selected + 1) % 2
+                self.menu_selected = (self.menu_selected + 1) % 3
                 self.menu_mouse_active = False
-
             elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                if self.menu_selected == 0:
-                    # Começa exatamente a Fase 1 existente.
-                    self.game_state = "GAME"
-                    self.mission_ui.show(
-                        "NOVA MISSAO",
-                        "Falar com Clara"
-                    )
-                else:
-                    pygame.quit()
-                    raise SystemExit
-
+                self.activate_menu_option()
             elif event.key == pygame.K_ESCAPE:
-                pygame.quit()
-                raise SystemExit
-
+                self.running = False
         elif event.type == pygame.MOUSEMOTION:
+            self.menu_mouse_active = True
             for i, rect in enumerate(self.menu_option_rects):
                 if rect.collidepoint(event.pos):
                     self.menu_selected = i
-                    self.menu_mouse_active = True
-
+                    break
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             for i, rect in enumerate(self.menu_option_rects):
                 if rect.collidepoint(event.pos):
                     self.menu_selected = i
-                    if i == 0:
-                        self.game_state = "GAME"
-                        self.mission_ui.show(
-                            "NOVA MISSAO",
-                            "Falar com Clara"
-                        )
-                    else:
-                        pygame.quit()
-                        raise SystemExit
+                    self.activate_menu_option()
+                    break
 
     def run(self):
 
@@ -607,6 +941,15 @@ class Game:
             if self.game_state == "MENU":
                 self.draw_menu()
                 pygame.display.flip()
+            elif self.game_state == "CONTROLS":
+                self.draw_controls()
+                pygame.display.flip()
+            elif self.game_state == "INTRO":
+                if self.opening.update(dt):
+                    self.finish_opening()
+                else:
+                    self.opening.draw(self.screen)
+                    pygame.display.flip()
             else:
                 self.update(dt)
                 self.draw()
@@ -616,6 +959,12 @@ class Game:
         for event in pygame.event.get():
             if self.game_state == "MENU":
                 self.handle_menu_event(event)
+                continue
+            if self.game_state == "CONTROLS":
+                self.handle_controls_event(event)
+                continue
+            if self.game_state == "INTRO":
+                self.handle_opening_event(event)
                 continue
 
 
@@ -632,6 +981,11 @@ class Game:
             # -------------------------
 
             elif event.type == pygame.KEYDOWN:
+
+                # Durante o encerramento, somente o botão da janela fecha o jogo.
+                # A cena corre automaticamente até o quadro final.
+                if self.victory:
+                    continue
 
                 # ESC
                 if event.key == pygame.K_ESCAPE:
@@ -680,7 +1034,7 @@ class Game:
 
     def handle_interaction(self):
 
-        if self.game_over or self.checkpoint_active:
+        if self.game_over or self.checkpoint_active or self.victory:
             return
 
         # =========================
@@ -703,6 +1057,11 @@ class Game:
                     self.office_b_passed = True
                     self.victory = True
                     self.phase1_ending_timer = 0.0
+                    # Parte 21: a cena final é cinematográfica; não permitir
+                    # que a pose de caminhada permaneça durante o encerramento.
+                    self.player.moving = False
+                    self.player.running = False
+                    self.player.interacting = False
                     self.objective = "FASE 1 CONCLUIDA"
 
                     self.dialogue.show(
@@ -773,6 +1132,12 @@ class Game:
 
             if self.office_b_unlocked and self.player.rect.colliderect(self.office_b_door.rect.inflate(80, 80)):
                 self.enter_office("B")
+                return
+
+            # Conversa opcional com o supervisor, sem substituir Clara/cracha/portas.
+            if (self.supervisor_visible_in_reception() and
+                self.player.rect.colliderect(self.supervisor_reception_rect.inflate(105, 105))):
+                self.speak_to_supervisor("reception")
                 return
 
         # =========================
@@ -863,27 +1228,85 @@ class Game:
                             self.dialogue.show(obj["text"])
                         return
 
-            if self.evaluation_finished and self.player.rect.colliderect(exit_rect.inflate(40,40)):
-                if self.current_office=="A":
-                    self.office_a_passed=True; self.office_b_unlocked=True; self.current_room="office"
-                    self.player.rect.topleft=(760,400); self.objective="Ir ate a porta do Escritorio B"
-                    self.dialogue.show("Voce concluiu o Escritorio A. Volte para a recepcao.")
-                    self.mission_ui.show("NOVA ETAPA","Entre no Escritorio B")
-                else:
-                    self.office_b_passed = True
-                    self.phase1_return_pending = True
-                    self.current_room = "office"
-                    self.current_office = "B"
-                    self.player.rect.topleft = (760,400)
-                    self.objective = "Voltar para a recepcao e falar com Clara"
-                    self.dialogue.show("Volte para a recepcao.")
-                    self.mission_ui.show(
-                        "RETORNO",
-                        "Fale com Clara para finalizar a Fase 1."
-                    )
+            # Saída do A continua normal. No B a saída só é liberada
+            # pela condição b_exit_unlocked + b_insane_active acima.
+            if (self.current_office == "A" and self.evaluation_finished
+                    and self.player.rect.colliderect(exit_rect.inflate(40,40))):
+                self.office_a_passed=True; self.office_b_unlocked=True; self.current_room="office"
+                self.player.rect.topleft=(760,400); self.objective="Ir ate a porta do Escritorio B"
+                self.dialogue.show("Voce concluiu o Escritorio A. Volte para a recepcao.")
+                self.mission_ui.show("NOVA ETAPA","Entre no Escritorio B")
+                return
+
+            # Supervisor opcional no A: não consome as interações com documentos,
+            # avaliação, saída ou objetos examináveis.
+            if (self.current_office == "A" and
+                self.player.rect.colliderect(self.supervisor_a_rect.inflate(100, 100))):
+                self.speak_to_supervisor("A")
+                return
+
+    # =====================================================
+    # V62 PARTE 10 - SUPERVISOR / PROGRESSAO NARRATIVA
+    # =====================================================
+
+    def supervisor_visible_in_reception(self):
+        """Depois de escapar do B, o chefe não volta a recepcao como se nada ocorreu."""
+        return (self.current_room == "office" and not self.phase1_return_pending
+                and not self.office_b_passed and not self.victory)
+
+    def speak_to_supervisor(self, location):
+        """Falas curtas; sem missões obrigatórias ou alterações na IA."""
+        if location == "reception":
+            if not self.supervisor_met:
+                message = ("CHEFE: Bom dia, novo funcionario. Sou seu supervisor. "
+                           "A Clara vai orientar voce no primeiro turno.")
+                self.supervisor_met = True
+            elif self.office_a_passed:
+                message = ("CHEFE: Recebi seu relatorio. O Setor B exige atencao. "
+                           "Nao se atrase.")
+            else:
+                message = ("CHEFE: Aqui valorizamos organizacao. Primeiro o cracha, "
+                           "depois os documentos.")
+        elif self.evaluation_finished:
+            message = "CHEFE: A avaliacao terminou. Volte a recepcao para seguir o turno."
+        elif self.supervisor_a_stage == 0:
+            message = ("CHEFE: Recolha os tres documentos e use o terminal "
+                       "de avaliacao. Posso orientar voce.")
+        elif self.supervisor_a_stage == 1:
+            message = "CHEFE: Um erro acontece. Revise o procedimento e continue."
+        elif self.supervisor_a_stage == 2:
+            message = "CHEFE: Dois erros. Preste mais atencao. Estou observando seu trabalho."
+        else:
+            message = "CHEFE: Tres erros... As regras nao foram feitas para serem ignoradas."
+        self.dialogue.show(message)
+
+    def update_supervisor_patrol(self, dt):
+        """Supervisor passeia pela recepcao e pelo A; continua nao hostil.
+
+        A patrulha usa rotas locais seguras, independentes do sistema de
+        perseguicao do Escritorio B. Durante uma conversa proxima, espera.
+        """
+        if self.game_over or self.victory or self.checkpoint_active:
+            return
+        if self.current_room == "office" and self.supervisor_visible_in_reception():
+            near = self.player.rect.colliderect(self.supervisor_reception_rect.inflate(125, 125))
+            self.supervisor_reception_patrol.update(
+                dt, paused=bool(near and self.dialogue.active)
+            )
+        elif self.current_room == "office_a":
+            near = self.player.rect.colliderect(self.supervisor_a_rect.inflate(125, 125))
+            self.supervisor_a_patrol.update(
+                dt,
+                paused=bool((near and self.dialogue.active)
+                            or self.evaluation_started or self.math.active),
+            )
 
     def enter_office(self, office):
         self.current_office=office; self.current_room="office_a" if office=="A" else "office_b"
+        if office == "A":
+            self.supervisor_a_patrol.reset(855, 400)
+            self.supervisor_a_errors = 0
+            self.supervisor_a_stage = 0
         self.office_obstacles=self.office_a_obstacles if office=="A" else self.office_b_obstacles
         self.player.rect.topleft=(150,500); self.documents_collected=0
         for doc in self.get_current_documents(): doc.collected=False
@@ -1061,6 +1484,16 @@ class Game:
             self.dialogue.show(
                 "Resposta errada!"
             )
+            if self.current_office == "A":
+                # No A, o chefe NAO persegue: somente muda comportamento e visual.
+                self.supervisor_a_errors += 1
+                self.supervisor_a_stage = min(3, self.supervisor_a_errors)
+                supervisor_lines = (
+                    "CHEFE: Tudo bem. Corrija o erro e continue.",
+                    "CHEFE: Preciso que voce se concentre mais.",
+                    "CHEFE: Leia cada pergunta com muita atencao.",
+                )
+                self.dialogue.show(supervisor_lines[min(2, self.supervisor_a_errors - 1)])
 
         # ESCRITORIO B: toda resposta aumenta a tensao.
         # Acerto = +10 | Erro = +14.
@@ -1167,6 +1600,9 @@ class Game:
 
     def update(self, dt):
 
+        if self.opening_fade > 0:
+            self.opening_fade = max(0.0, self.opening_fade - dt)
+
         if self.escape_transition_timer > 0:
             self.escape_transition_timer -= dt
             if self.escape_transition_timer < 0:
@@ -1244,10 +1680,11 @@ class Game:
 
         if self.current_room == "office":
 
-            self.player.update(
-                self.map.walls,
-                dt
-            )
+            if not self.victory:
+                self.player.update(
+                    self.map.walls,
+                    dt
+                )
 
             self.camera.update(
                 self.player.rect
@@ -1255,10 +1692,11 @@ class Game:
 
         elif self.current_room in ("office_a", "office_b"):
 
-            self.player.update(
-                self.office_obstacles,
-                dt
-            )
+            if not self.victory:
+                self.player.update(
+                    self.office_obstacles,
+                    dt
+                )
 
             # Mantém o jogador dentro da área visível.
             # Mesmo limite físico usado pelo chefe.
@@ -1281,7 +1719,12 @@ class Game:
                 self.reset_office_checkpoint()
 
         # =========================
-        # CHEFE
+        # SUPERVISOR (ESCRITORIO A): SEM PERSEGUICAO
+        # =========================
+        self.update_supervisor_patrol(dt)
+
+        # =========================
+        # CHEFE (AMEACA EXISTENTE, ESCRITORIO B)
         # =========================
 
         if (
@@ -1365,6 +1808,11 @@ class Game:
                 self.interaction_text="[E] Entrar no B"
                 self.interaction_rect=self.office_b_door.rect
 
+            elif (self.supervisor_visible_in_reception() and
+                  self.player.rect.colliderect(self.supervisor_reception_rect.inflate(105, 105))):
+                self.interaction_text = "[E] Falar com Chefe"
+                self.interaction_rect = self.supervisor_reception_rect
+
         # =========================
         # INTERAÇÕES - ESCRITÓRIO A
         # =========================
@@ -1412,6 +1860,15 @@ class Game:
                 self.interaction_text = "[E] Sair"
                 self.interaction_rect = exit_rect
 
+            elif (
+                self.current_office == "B"
+                and self.b_exit_unlocked
+                and self.b_insane_active
+                and self.player.rect.colliderect(exit_rect.inflate(60, 60))
+            ):
+                self.interaction_text = "[E] Sair"
+                self.interaction_rect = exit_rect
+
             if not self.interaction_text and not self.evaluation_started and not self.evaluation_finished:
                 exam_names = ("relogio_a", "computador_a") if self.current_office == "A" else ("relogio_b", "monitor_b")
                 for exam_name in exam_names:
@@ -1420,6 +1877,32 @@ class Game:
                         self.interaction_text = "[E] Examinar"
                         self.interaction_rect = obj["rect"]
                         break
+
+            if (self.current_office == "A" and not self.interaction_text and
+                self.player.rect.colliderect(self.supervisor_a_rect.inflate(100, 100))):
+                self.interaction_text = "[E] Falar com Chefe"
+                self.interaction_rect = self.supervisor_a_rect
+
+    # =====================================================
+    # VISIBILIDADE DOS AVISOS DE INTERAÇÃO
+    # =====================================================
+
+    def should_show_interaction_prompt(self):
+        """Esconde só a opção de falar com Clara enquanto há diálogo.
+
+        Mantém visíveis os comandos de pegar crachá/documentos, entrar,
+        examinar e usar estações mesmo que uma mensagem ainda esteja na tela.
+        Não altera as regras de interação ou de colisão do jogo.
+        """
+        if not self.interaction_text or self.interaction_rect is None:
+            return False
+        is_clara_prompt = (
+            self.current_room == "office"
+            and self.interaction_text in ("[E] Falar", "[E] Finalizar Fase 1")
+            and self.interaction_rect == self.clara.rect
+        )
+        is_supervisor_prompt = self.interaction_text == "[E] Falar com Chefe"
+        return not (self.dialogue.active and (is_clara_prompt or is_supervisor_prompt))
 
     # =====================================================
     # DRAW
@@ -1494,7 +1977,11 @@ class Game:
         # INDICADOR DE INTERAÇÃO
         # =========================
 
-        if self.interaction_text and self.interaction_rect is not None:
+        # Somente o comando de falar com Clara deve sumir durante o diálogo.
+        # A regra anterior escondia também [E] Pegar (crachá/documentos),
+        # [E] Entrar, [E] Examinar etc. enquanto o texto ainda aparecia.
+        # Essas outras interações continuam visíveis mesmo com diálogo ativo.
+        if self.should_show_interaction_prompt():
 
             txt = self.font.render(
                 self.interaction_text,
@@ -1509,6 +1996,10 @@ class Game:
                 )
             else:
                 pos = self.interaction_rect
+
+            # Prompt do chefe aparece acima da cabeça, nunca em cima do rosto.
+            if self.interaction_text == "[E] Falar com Chefe":
+                pos = pos.move(0, -84)
 
             # Destaca discretamente o objeto que pode ser usado/examinado.
             if self.interaction_text == "[E] Examinar":
@@ -1637,7 +2128,92 @@ class Game:
 
             self.draw_game_over()
 
+        if self.opening_fade > 0:
+            fade = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            fade.fill((7, 10, 15, round(230 * self.opening_fade / 0.50)))
+            self.screen.blit(fade, (0, 0))
+
         pygame.display.flip()
+
+    # =====================================================
+    # V62 / PARTE 6 — RECEPÇÃO (APENAS POLIMENTO VISUAL)
+    # =====================================================
+    # A mesa está sobre os mesmos blocos sólidos do mapa: x=320..704,
+    # y=192..256. Nenhuma colisão, posição de NPC ou interação foi alterada.
+
+    def _reception_screen_rect(self, x, y, width, height):
+        return self.camera.apply_rect(pygame.Rect(x, y, width, height))
+
+    def _draw_reception_back(self):
+        """Pinta tampo, materiais e monitor atrás da Clara."""
+        desk = self._reception_screen_rect(320, 192, 384, 64)
+        # Sombra do balcão e faixa traseira discreta.
+        pygame.draw.rect(self.screen, (34, 32, 34), desk.move(5, 5))
+        pygame.draw.rect(self.screen, (51, 43, 42), desk)
+        pygame.draw.rect(self.screen, (100, 76, 61),
+                         self._reception_screen_rect(320, 190, 384, 34))
+        pygame.draw.rect(self.screen, (126, 96, 77),
+                         self._reception_screen_rect(326, 195, 372, 22))
+        pygame.draw.rect(self.screen, (73, 57, 50),
+                         self._reception_screen_rect(327, 196, 370, 2))
+
+        # Monitor compacto, deslocado à direita para não encobrir o rosto.
+        monitor = self._reception_screen_rect(443, 173, 65, 42)
+        pygame.draw.rect(self.screen, (26, 28, 32), monitor, border_radius=3)
+        pygame.draw.rect(self.screen, (99, 103, 104), monitor, 2, border_radius=3)
+        pygame.draw.rect(self.screen, (40, 52, 57),
+                         self._reception_screen_rect(448, 178, 55, 30))
+        pygame.draw.line(self.screen, (63, 84, 85),
+                         (monitor.x + 9, monitor.y + 12),
+                         (monitor.x + 55, monitor.y + 12), 1)
+        pygame.draw.rect(self.screen, (73, 74, 75),
+                         self._reception_screen_rect(473, 215, 5, 7))
+        pygame.draw.rect(self.screen, (51, 52, 54),
+                         self._reception_screen_rect(457, 222, 36, 4))
+
+        # Teclado, fichas de entrada, caneca e pequeno telefone.
+        pygame.draw.rect(self.screen, (37, 38, 39),
+                         self._reception_screen_rect(442, 207, 52, 9), border_radius=2)
+        for col in range(9):
+            pygame.draw.rect(self.screen, (115, 113, 109),
+                             self._reception_screen_rect(446 + col * 5, 210, 3, 1))
+        for x, y, w, h in ((522, 199, 36, 18), (526, 196, 29, 17)):
+            pygame.draw.rect(self.screen, (197, 189, 170),
+                             self._reception_screen_rect(x, y, w, h))
+        for y in (201, 205, 209):
+            pygame.draw.rect(self.screen, (123, 118, 110),
+                             self._reception_screen_rect(529, y, 23, 1))
+        phone = self._reception_screen_rect(604, 197, 34, 18)
+        pygame.draw.rect(self.screen, (45, 45, 48), phone, border_radius=3)
+        pygame.draw.rect(self.screen, (75, 76, 78),
+                         self._reception_screen_rect(610, 201, 22, 5), border_radius=2)
+        pygame.draw.rect(self.screen, (37, 38, 38),
+                         self._reception_screen_rect(647, 201, 13, 15), border_radius=2)
+        pygame.draw.rect(self.screen, (190, 177, 151),
+                         self._reception_screen_rect(650, 199, 7, 5))
+
+    def _draw_reception_front(self):
+        """Frente do balcão passa POR CIMA do corpo/cadeira da Clara."""
+        # Faixa superior separa o tampo da face frontal e esconde as pernas.
+        pygame.draw.rect(self.screen, (35, 29, 28),
+                         self._reception_screen_rect(318, 222, 388, 8))
+        pygame.draw.rect(self.screen, (75, 57, 51),
+                         self._reception_screen_rect(321, 229, 382, 28))
+        pygame.draw.rect(self.screen, (61, 46, 42),
+                         self._reception_screen_rect(326, 233, 372, 21))
+        pygame.draw.rect(self.screen, (104, 77, 64),
+                         self._reception_screen_rect(322, 229, 380, 2))
+        # Painéis discretos sem transformar o balcão em um bloco chapado.
+        for x in (427, 576):
+            pygame.draw.rect(self.screen, (44, 35, 33),
+                             self._reception_screen_rect(x, 233, 2, 20))
+        # Plaquinha da recepção, pequena o bastante para não dominar a cena.
+        plaque = self._reception_screen_rect(601, 235, 85, 16)
+        pygame.draw.rect(self.screen, (39, 42, 43), plaque, border_radius=2)
+        pygame.draw.rect(self.screen, (121, 117, 104), plaque, 1, border_radius=2)
+        sign = pygame.font.SysFont(None, 14, bold=True).render(
+            "RECEPCAO", True, (219, 209, 187))
+        self.screen.blit(sign, sign.get_rect(center=plaque.center))
 
     # =====================================================
     # DESENHAR SALA PRINCIPAL
@@ -1645,27 +2221,46 @@ class Game:
 
     def draw_office(self):
 
-        self.map.draw(
-            self.screen,
-            self.camera
+        # Piso, paredes e acabamentos; colisões continuam usando GameMap.
+        self.reception_art.draw_background(self.screen, self.camera)
+
+        # Balcão primeiro ao fundo; a Clara aparece atrás do tampo.
+        self._draw_reception_back()
+
+        # Somente as falas atribuídas à Clara movem a boca dela.
+        # Quando a digitação termina, ela volta à expressão neutra.
+        is_clara_line = self.dialogue.full_text in (
+            self.clara.dialogue,
+            "Voce sobreviveu ao seu primeiro turno...",
+        )
+        is_clara_speaking = (
+            self.dialogue.active
+            and is_clara_line
+            and self.dialogue.char_index < len(self.dialogue.full_text)
+        )
+        self.sprite_renderer.draw_clara(
+            self.screen, self.clara.rect, self.camera, speaking=is_clara_speaking
         )
 
-        self.clara.draw(
-            self.screen,
-            self.camera
-        )
+        # Desenho em camadas: parte inferior do assento fica atrás da mesa.
+        self._draw_reception_front()
 
-        self.badge.draw(
-            self.screen,
-            self.camera
-        )
+        # Antes do Setor B: chefe e supervisor cordial na area da recepcao.
+        if self.supervisor_visible_in_reception():
+            self.sprite_renderer.draw_boss(
+                self.screen, self.supervisor_reception_rect,
+                self.supervisor_a_stage, self.camera, key="chefe_recepcao"
+            )
 
-        self.office_door.draw(
-            self.screen,
-            self.camera
-        )
+        # Sprite do crachá no mesmo lugar do item anterior (sem quadrado neon).
+        self.reception_art.draw_badge(self.screen, self.camera, self.badge)
 
-        self.office_b_door.draw(self.screen, self.camera)
+        # Portas no mesmo lugar e com a mesma hitbox da versão aprovada.
+        self.reception_art.draw_door(
+            self.screen, self.camera, self.office_door.rect, True, "A")
+        self.reception_art.draw_door(
+            self.screen, self.camera, self.office_b_door.rect,
+            self.office_b_unlocked, "B")
 
         label_a = self.big_font.render("A", True, WHITE)
         label_b = self.big_font.render("B", True, WHITE)
@@ -1678,9 +2273,8 @@ class Game:
             locked = self.font.render("B BLOQUEADO", True, (180,180,180))
             self.screen.blit(locked, (b_pos.centerx-locked.get_width()//2, b_pos.top-40))
 
-        self.player.draw(
-            self.screen,
-            self.camera
+        self.sprite_renderer.draw_character(
+            self.screen, "protagonista", self.player.rect, self.camera, key="protagonista"
         )
 
         # -------------------------
@@ -2142,6 +2736,24 @@ class Game:
             if self.b_tension >= 40 and flicker_phase == 0:
                 pygame.draw.rect(self.screen, (170, 170, 140), (770, 280, 3, 14))
 
+        # V62 Parte 18: Arte nova SOMENTE no Escritorio A.
+        # Deixa exatamente iguais as hitboxes, itens, IA, tarefas e controles.
+        # Composicao antes de desenhar itens/NPCs e antes do HUD dinamico.
+        if self.current_office == "A":
+            self.office_a_art.draw(self.screen)
+            title = self.font.render("ESCRITORIO A", True, WHITE)
+            self.screen.blit(title, (520, 40))
+            objective_text = self.font.render(f"Objetivo: {self.objective}", True, WHITE)
+            self.screen.blit(objective_text, (850, 20))
+        elif self.current_office == "B":
+            # Arte do B sobre os blocos antigos, ANTES dos itens, HUD e personagens.
+            # Preserva a logica da tensao e os efeitos de falha de iluminacao.
+            self.office_b_art.draw(self.screen, self.b_tension)
+            title = self.font.render("ESCRITORIO B", True, WHITE)
+            self.screen.blit(title, (520, 40))
+            objective_text = self.font.render(f"Objetivo: {self.objective}", True, WHITE)
+            self.screen.blit(objective_text, (850, 20))
+
         # -------------------------
         # DOCUMENTOS
         # -------------------------
@@ -2157,33 +2769,21 @@ class Game:
             (850, 60)
         )
 
-        for doc in self.get_current_documents():
+        # Parte 19: pastas de documentos com o mesmo retangulo logico anterior.
+        # Aplica-se ao A e ao B; nao altera colocacao ou funcionamento da coleta.
+        for index, doc in enumerate(self.get_current_documents()):
             if not doc.collected:
-                doc.draw(self.screen, self.camera)
+                self.document_art.draw(self.screen, self.camera, doc, index)
 
         # -------------------------
         # ESTAÇÃO
         # -------------------------
 
-        # Mesa/estacao de avaliacao com detalhes de um computador.
+        # O terminal A ja esta pintado na arte: preservar a area de interacao
+        # e escrever apenas os dados dinamicos do jogo sobre sua tela.
         station = self.get_current_station()
-        pygame.draw.rect(
-            self.screen,
-            (40, 40, 40),
-            station
-        )
-        pygame.draw.rect(
-            self.screen,
-            (24, 24, 24),
-            (station.x + 28, station.y + 10, 84, 34),
-            border_radius=3
-        )
-        pygame.draw.rect(
-            self.screen,
-            (18, 19, 21),
-            (station.x + 34, station.y + 15, 72, 23),
-            border_radius=2
-        )
+        # O terminal do B agora ja esta na arte de fundo; o texto de estado
+        # continua dinamico sobre a mesma area de interacao da V61.
 
         # V61: o monitor do Escritorio A mantem os estados da V60.
         # No Escritorio B, a tela acompanha a avaliacao e o aumento da tensao.
@@ -2256,93 +2856,59 @@ class Game:
 
             hint_surface = hint_font.render(station_hint, True, (125, 135, 125))
             self.screen.blit(hint_surface, (station.x + 39, station.y + 31))
-        pygame.draw.rect(
-            self.screen,
-            (55, 55, 55),
-            (station.x + 64, station.y + 44, 12, 8)
-        )
-        pygame.draw.rect(
-            self.screen,
-            (65, 65, 65),
-            (station.x + 50, station.y + 54, 40, 7),
-            border_radius=2
-        )
-        pygame.draw.rect(
-            self.screen,
-            (48, 45, 40),
-            (station.x + 36, station.y + 65, 48, 6),
-            border_radius=2
-        )
-        pygame.draw.circle(
-            self.screen,
-            (150, 150, 145),
-            (station.x + 95, station.y + 68),
-            3
-        )
-
-        station_text = self.font.render(
-            "AVALIACAO",
-            True,
-            WHITE
-        )
-
-        self.screen.blit(
-            station_text,
-            (
-                self.get_current_station().x + 10,
-                self.get_current_station().y + 25
-            )
-        )
+        if self.current_office == "B":
+            station_text = pygame.font.SysFont("arial", 13, bold=True).render(
+                "AVALIACAO", True, (207, 196, 181))
+            self.screen.blit(station_text, (station.x + 31, station.y + 65))
+        else:
+            # Rotulo menor na faixa inferior do terminal A: nao cobre os estados.
+            station_text = pygame.font.SysFont("arial", 13, bold=True).render(
+                "AVALIACAO", True, (206, 207, 191))
+            self.screen.blit(station_text, (station.x + 33, station.y + 69))
 
         # -------------------------
         # SAÍDA
         # -------------------------
 
-        if self.evaluation_finished and not self.b_boss_reveal_pending:
-
-            exit_color = GREEN
-            if self.current_office == "B" and self.b_insane_active:
-                pulse = 90 + int(60 * (0.5 + 0.5 * math.sin(pygame.time.get_ticks() / 180.0)))
-                exit_color = (pulse, 40, 40)
-
-            pygame.draw.rect(
-                self.screen,
-                exit_color,
-                self.get_current_exit()
+        if self.current_office == "A":
+            # Parte 19: porta corporativa sempre visivel, sem quadrado verde.
+            # Depois da avaliacao, apenas as luzes de destravamento mudam.
+            # A hitbox e a condicao de [E] Sair permanecem EXATAMENTE iguais.
+            self.office_a_art.draw_exit(
+                self.screen, self.get_current_exit(),
+                unlocked=(self.evaluation_finished and not self.b_boss_reveal_pending)
             )
-
-            exit_text = self.font.render(
-                "SAIDA",
-                True,
-                BLACK
-            )
-
-            self.screen.blit(
-                exit_text,
-                (
-                    self.get_current_exit().x + 25,
-                    self.get_current_exit().y + 25
-                )
+        elif self.current_office == "B":
+            # Parte 20: porta corporativa tambem no B, sem quadrado verde/vermelho.
+            # Mesmo gatilho visual de liberacao da versao anterior; colisoes,
+            # ativacao de fuga e interacao E continuam intocadas.
+            self.office_b_art.draw_exit(
+                self.screen, self.get_current_exit(),
+                unlocked=(self.b_exit_unlocked and self.b_insane_active)
             )
 
         # -------------------------
         # CHEFE
         # -------------------------
 
-        if self.boss_active:
-            self.boss.draw(
-                self.screen,
-                self.camera,
-                self.b_tension_stage
+        if self.current_office == "A":
+            # Fiscal presente durante coleta e prova; sem hitbox ou dano.
+            self.sprite_renderer.draw_boss(
+                self.screen, self.supervisor_a_rect, self.supervisor_a_stage,
+                key="chefe_supervisor_a"
+            )
+        elif self.boss_active:
+            # A IA, colisões e perseguição do B são exatamente as da Parte 9.
+            self.sprite_renderer.draw_boss(
+                self.screen, self.boss.rect, self.b_tension_stage, key="chefe_perseguidor_b"
             )
 
         # -------------------------
         # JOGADOR
         # -------------------------
 
-        self.player.draw(
-            self.screen,
-            self.camera
+        self.sprite_renderer.draw_character(
+            self.screen, "protagonista", self.player.rect, self.camera, key="protagonista"
         )
 
         # -------------------------
@@ -3493,6 +4059,10 @@ class Game:
         self.b_corruption_level=0; self.b_question_number=0; self.b_question_answered=False; self.b_evaluation_complete=False; self.b_corruption_anim_timer=0.0; self.b_boss_reveal_pending=False; self.b_boss_reveal_timer=0.0; self.b_insane_active=False; self.b_exit_unlocked=False
         self.b_tension=0.0
         self.anger=0
+        if self.current_office == "A":
+            self.supervisor_a_errors = 0
+            self.supervisor_a_stage = 0
+            self.supervisor_a_patrol.reset(855, 400)
         self.boss_active=False; self.boss.active=False; self.boss_path=[]; self.boss_path_target=None
         self.boss_path_timer=0.0; self.boss.chasing=False; self.boss.speed=1.35; self.boss_state="idle"
         self.boss_roam_target=None; self.boss_roam_wait=0.0; self.boss_search_timer=0; self.boss_last_seen=None

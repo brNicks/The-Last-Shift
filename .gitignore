@@ -1,0 +1,19 @@
+# Python / IDE
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.idea/
+.vscode/
+.pytest_cache/
+
+# Arquivos de sistema
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Backups locais e pacotes gerados
+backup_*/
+*.zip
+*.log
