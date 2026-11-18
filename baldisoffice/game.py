@@ -401,6 +401,11 @@ class Game:
             pygame.Rect(300, 465, 180, 70),
             pygame.Rect(620, 445, 120, 180),
         ]
+        # Parede frontal comum aos escritorios A e B. Nao pode ser
+        # atravessada pela hitbox do jogador (40 x 40), independentemente
+        # da direcao ou da velocidade de caminhada.
+        # Y=226 deixa a sprite inteira abaixo do rodape da parede (~Y=174).
+        self.office_upper_wall = pygame.Rect(100, 100, 1080, 126)
         self.office_obstacles = self.office_a_obstacles
         self.a_documents = [self.doc1, self.doc2, self.doc3]
         self.b_doc1 = Item(260, 300, "Documento B1")
@@ -482,12 +487,12 @@ class Game:
             waypoints=[
                 # O fiscal permanece sobre o piso, sem andar sobre a parede
                 # superior. As mesas e o terminal conservam suas hitboxes.
-                (1080, 220), (650, 220), (330, 220), (135, 225),
+                (1080, 235), (650, 235), (330, 235), (135, 235),
                 (135, 440), (215, 545), (575, 540), (930, 545),
                 (1080, 495), (1090, 240), (850, 395),
             ],
             blockers=list(self.office_a_obstacles) + [self.math_station],
-            bounds=(120, 204, 1160, 600),
+            bounds=(120, 226, 1160, 600),
             speed=55.0,
         )
         self.supervisor_a_errors = 0
@@ -1738,8 +1743,10 @@ class Game:
         elif self.current_room in ("office_a", "office_b"):
 
             if not self.victory:
+                # Mesas + limite frontal solido, valido no A e no B.
+                # Evita que a sprite caminhe ou escorregue pela parede.
                 self.player.update(
-                    self.office_obstacles,
+                    [*self.office_obstacles, self.office_upper_wall],
                     dt
                 )
 
@@ -4197,16 +4204,15 @@ class Game:
         elif self.b_tension < 100: self.b_tension_stage = 4
         else: self.b_tension_stage = 5
     def get_office_room_bounds(self):
-        """Area jogavel compartilhada pelos escritorios A e B.
+        """Limites fisicos comuns aos escritorios A e B.
 
-        As artes de ambos os setores possuem parede superior ate Y~174,
-        rodape inferior em Y~600 e paredes laterais em X~100 e X~1180.
-        O rect do personagem tem 40px, mas a sprite de 88px e ancorada
-        pelos pes: Y=204 reserva uma pequena margem visual para a cabeca
-        sem permitir que o personagem caminhe SOBRE a parede.
-        Os limites ja consideram o espaco para a sprite e as bordas.
+        A sprite do protagonista mede 72x88 px e e desenhada acima do
+        retangulo logico de 40x40, ancorada pelos pes. Com o limite antigo
+        Y=204, a cabeca ainda invadia visualmente a parede superior.
+        Y=226 e a colisao explicita de office_upper_wall impedem isso.
+        O piso vai ate Y=600 e os limites horizontais continuam iguais.
         """
-        return pygame.Rect(120, 204, 1040, 396)
+        return pygame.Rect(120, 226, 1040, 374)
     def get_boss_room_bounds(self):
         return self.get_office_room_bounds()
     def get_navigation_obstacles(self):
